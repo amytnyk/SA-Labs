@@ -1,3 +1,5 @@
+import random
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uuid
@@ -10,13 +12,17 @@ class Message(BaseModel):
     msg: str
 
 
-logging_service_url = "http://localhost:8001/log"
-messages_service_url = "http://localhost:8002/message"
+logging_service_urls = ["http://localhost:8011/log", "http://localhost:8012/log", "http://localhost:8013/log"]
+messages_service_url = "http://localhost:8004/message"
+
+
+def random_logging_service_url():
+    return random.choice(logging_service_urls)
 
 
 @app.post("/facade")
 async def post_message(message: Message):
-    response = requests.post(logging_service_url, json={"id": str(uuid.uuid4()), "msg": message.msg})
+    response = requests.post(random_logging_service_url(), json={"id": str(uuid.uuid4()), "msg": message.msg})
     if not response.ok:
         raise HTTPException(status_code=response.status_code, detail=response.reason)
 
@@ -25,7 +31,7 @@ async def post_message(message: Message):
 
 @app.get("/facade")
 async def get_messages():
-    logging_response = requests.get(logging_service_url)
+    logging_response = requests.get(random_logging_service_url())
     if not logging_response.ok:
         raise HTTPException(status_code=logging_response.status_code, detail=logging_response.reason)
 
