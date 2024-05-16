@@ -1,35 +1,45 @@
 import random
 
 import hazelcast
+from consul import Consul
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uuid
 import requests
-
-app = FastAPI()
 
 
 class Message(BaseModel):
     msg: str
 
 
-logging_service_urls = ["http://localhost:8011/log", "http://localhost:8012/log", "http://localhost:8013/log"]
-messages_service_urls = ["http://localhost:8021/message", "http://localhost:8022/message"]
+app = FastAPI()
+
+consul_service = Consul()
+consul_service.agent.service.register(name="facade-service", service_id=str(uuid.uuid4()), address="127.0.0.1",
+                                      port=8080)
 
 client = hazelcast.HazelcastClient(
-    cluster_name="cluster",
-    cluster_members=["127.0.0.1:5704"]
+    cluster_name=consul_service.kv.get("hazelcast_cluster_name")[1]["Value"].decode("utf-8"),
+    cluster_members=[consul_service.kv.get("hazelcast_queue_address")[1]["Value"].decode("utf-8")]
 )
 
-message_queue = client.get_queue("message_queue").blocking()
+message_queue = client.get_queue(consul_service.kv.get("message_queue_name")[1]["Value"].decode("utf-8")).blocking()
 
 
 def random_logging_service_url():
-    return random.choice(logging_service_urls)
+    return random.choice([
+        f"http://{service['Address']}:{service['Port']}/log"
+        for service in consul_service.agent.services().values()
+        if service["Service"] == "logging-service"
+    ])
 
 
 def random_messages_service_url():
-    return random.choice(messages_service_urls)
+    return random.choice([
+        f"http://{service['Address']}:{service['Port']}/message"
+        for service in consul_service.agent.services().values()
+        if service["Service"] == "messages-service"
+    ])
 
 
 @app.post("/facade")
